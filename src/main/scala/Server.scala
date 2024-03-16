@@ -1,21 +1,34 @@
 import cats.effect.*
 import cats.effect.implicits.effectResourceOps
+import cats.effect.kernel.{Async, Resource}
 import com.comcast.ip4s.{ipv4, port}
+import io.opentelemetry.api.GlobalOpenTelemetry
 import org.http4s.ember.server.EmberServerBuilder
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.slf4j.Slf4jFactory
+import org.typelevel.otel4s.java.OtelJava
+import org.typelevel.otel4s.metrics.Meter
 
 import fs2.io.net.Network
+import routes.PlantsRoutes
+import services.PlantsService
 
 object Server extends IOApp {
 
-  private def app[F[_]: Async: Network: LoggerFactory]: Resource[F, Unit] = {
+  private def app[F[_]: Async: LiftIO: Network: LoggerFactory]: Resource[F, Unit] = {
     val logger = LoggerFactory[F].getLogger
     for {
+      otel <- Resource
+        .eval(Async[F].delay(GlobalOpenTelemetry.get))
+        .evalMap(OtelJava.forAsync[F])
+      given Meter[F] <- otel.meterProvider.get("plantServer").toResource
+      plantsService <- PlantsService[F]
+      plantsRoutes <- PlantsRoutes[F](plantsService)
       server <- EmberServerBuilder
         .default[F]
         .withHost(ipv4"0.0.0.0")
         .withPort(port"8080")
+        .withHttpApp(plantsRoutes.orNotFound)
         .build
       _ <- logger
         .info(s"Server started and listing to port ${server.address.getPort}")

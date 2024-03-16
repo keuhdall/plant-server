@@ -3,7 +3,7 @@ package services
 import scala.concurrent.duration.*
 
 import cats.Semigroup
-import cats.effect.{Ref, Temporal}
+import cats.effect.{Ref, Resource, Temporal}
 import cats.implicits.*
 import org.typelevel.otel4s.Attribute
 import org.typelevel.otel4s.metrics.Meter
@@ -31,8 +31,8 @@ given Semigroup[PlantHealthCheck] = (x: PlantHealthCheck, y: PlantHealthCheck) =
   )
 
 object PlantsService {
-  def apply[F[_]: Temporal: Meter]: F[PlantsService[F]] =
-    for {
+  def apply[F[_]: Temporal: Meter]: Resource[F, PlantsService[F]] =
+    Resource.eval(for {
       ref <- Ref.empty[F, Map[Int, PlantHealthCheck]]
       waterLevelHist <- Meter[F].histogram("waterLevel").withUnit("%").create
     } yield new PlantsService[F] {
@@ -70,5 +70,5 @@ object PlantsService {
             }
         }
       } yield ()) *> Temporal[F].sleep(30.seconds)).foreverM
-    }
+    })
 }
