@@ -5,6 +5,7 @@ import scala.concurrent.duration.*
 import cats.Semigroup
 import cats.effect.{Ref, Resource, Temporal}
 import cats.implicits.*
+import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.otel4s.Attribute
 import org.typelevel.otel4s.metrics.Meter
 
@@ -30,12 +31,17 @@ given Semigroup[PlantHealthCheck] = (x: PlantHealthCheck, y: PlantHealthCheck) =
     waterLevel = x.waterLevel.max(y.waterLevel)
   )
 
+trait StatefulPlantService[F[_]] extends PlantsService[F] {
+  def check: F[Unit]
+}
+
 object PlantsService {
-  def apply[F[_]: Temporal: Meter]: Resource[F, PlantsService[F]] =
+  def apply[F[_]: Temporal: LoggerFactory: Meter]: Resource[F, StatefulPlantService[F]] =
     Resource.eval(for {
       ref <- Ref.empty[F, Map[Int, PlantHealthCheck]]
       waterLevelHist <- Meter[F].histogram("waterLevel").withUnit("%").create
-    } yield new PlantsService[F] {
+      logger = LoggerFactory[F].getLogger
+    } yield new StatefulPlantService[F] {
       import PlantState.*
 
       private val waterLevelThreshold = 10
@@ -54,8 +60,9 @@ object PlantsService {
           _ <- ref.update(_.updated(1, currentHealth))
         } yield ()
 
-      def check: F[Unit] = ((for {
+      override def check: F[Unit] = ((for {
         states <- ref.get
+        _ <- logger.info(s"checking state for ${states.size} devices...")
         now <- Temporal[F].monotonic
         _ <- states.toList.traverse_ { (id, health) =>
           if (now - health.lastChecked >= noHealthMaxDuration)

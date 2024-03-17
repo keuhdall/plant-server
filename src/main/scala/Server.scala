@@ -1,5 +1,5 @@
 import cats.effect.*
-import cats.effect.implicits.effectResourceOps
+import cats.effect.implicits.{effectResourceOps, genSpawnOps}
 import cats.effect.kernel.{Async, Resource}
 import com.comcast.ip4s.{ipv4, port}
 import io.opentelemetry.api.GlobalOpenTelemetry
@@ -23,6 +23,7 @@ object Server extends IOApp {
         .evalMap(OtelJava.forAsync[F])
       given Meter[F] <- otel.meterProvider.get("plantServer").toResource
       plantsService <- PlantsService[F]
+      _ <- plantsService.check.start.toResource
       plantsRoutes <- PlantsRoutes[F](plantsService)
       server <- EmberServerBuilder
         .default[F]
@@ -31,7 +32,7 @@ object Server extends IOApp {
         .withHttpApp(plantsRoutes.orNotFound)
         .build
       _ <- logger
-        .info(s"Server started and listing to port ${server.address.getPort}")
+        .info(s"Server started and listening to port ${server.address.getPort}")
         .toResource
     } yield ()
   }
