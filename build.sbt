@@ -15,7 +15,8 @@ lazy val root = (project in file("."))
         otelDeps ++
         smithyDeps ++
         testDeps ++
-        testContainersDeps,
+        testContainersDeps ++
+        Seq(deps.pureConfig),
     commonSettings
   )
 

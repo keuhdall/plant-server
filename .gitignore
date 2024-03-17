@@ -8,3 +8,7 @@ dependencies/redis/*.rdb
 out/
 *.iml
 .env
+.bloop/
+.metals/
+.smithy*
+.vscode/
