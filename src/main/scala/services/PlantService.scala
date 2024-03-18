@@ -28,15 +28,15 @@ final case class PlantHealthCheck(
 given Configuration = Configuration.default
 final case class DiscordMessage(content: String) derives ConfiguredCodec
 
-given Semigroup[PlantHealthCheck] = (x: PlantHealthCheck, y: PlantHealthCheck) =>
+given Semigroup[PlantHealthCheck] = (old: PlantHealthCheck, `new`: PlantHealthCheck) =>
   PlantHealthCheck(
-    lastChecked = x.lastChecked.max(y.lastChecked),
-    state = (x.state, y.state) match {
+    lastChecked = old.lastChecked.max(`new`.lastChecked),
+    state = (old.state, `new`.state) match {
+      case (_, PlantState.Ok)                                  => PlantState.Ok
       case (PlantState.Notified, _) | (_, PlantState.Notified) => PlantState.Notified
-      case (PlantState.NoWater, _) | (_, PlantState.NoWater)   => PlantState.NoWater
-      case (PlantState.Ok, _) | (_, PlantState.Ok)             => PlantState.Ok
+      case (_, PlantState.NoWater)                             => PlantState.NoWater
     },
-    waterLevel = x.waterLevel.max(y.waterLevel)
+    waterLevel = old.waterLevel.min(`new`.waterLevel)
   )
 
 trait StatefulPlantService[F[_]] extends PlantsService[F] {
@@ -57,7 +57,6 @@ object PlantsService {
 
       private val waterLevelThreshold = 10
       private val noHealthMaxDuration = 60.seconds
-
       private val webhookUri = discordConfig.getWebhookUri
 
       private def noWaterNotification(id: Int) = Request[F](
@@ -84,14 +83,14 @@ object PlantsService {
       override def health(id: Int, waterLevel: Int): F[Unit] =
         for {
           now <- Temporal[F].monotonic
-          newState = if (waterLevel <= waterLevelThreshold) NoWater else Ok
-          currentHealth = PlantHealthCheck(
+          newHealth = PlantHealthCheck(
             lastChecked = now,
-            state = newState,
+            state = if (waterLevel <= waterLevelThreshold) NoWater else Ok,
             waterLevel = waterLevel
           )
+          currentHealth <- ref.get.map(_.getOrElse(id, newHealth))
           _ <- waterLevelHist.record(waterLevel, Attribute[Long]("id", id))
-          _ <- ref.update(_.updated(1, currentHealth))
+          _ <- ref.update(_.updated(id, currentHealth |+| newHealth))
         } yield ()
 
       override def check: F[Unit] = ((for {
