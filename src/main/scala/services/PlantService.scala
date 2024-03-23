@@ -36,7 +36,7 @@ given Semigroup[PlantHealthCheck] = (old: PlantHealthCheck, `new`: PlantHealthCh
       case (PlantState.Notified, _) | (_, PlantState.Notified) => PlantState.Notified
       case (_, PlantState.NoWater)                             => PlantState.NoWater
     },
-    waterLevel = old.waterLevel.min(`new`.waterLevel)
+    waterLevel = `new`.waterLevel
   )
 
 trait StatefulPlantService[F[_]] extends PlantsService[F] {
