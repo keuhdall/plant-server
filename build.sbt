@@ -1,12 +1,15 @@
-ThisBuild / version := "0.1.0-SNAPSHOT"
+import com.typesafe.sbt.packager.docker.DockerVersion
+
+ThisBuild / version := "0.1.0"
 
 ThisBuild / scalaVersion := "3.4.0"
 
 lazy val root = (project in file("."))
   .enablePlugins(Smithy4sCodegenPlugin)
   .enablePlugins(DockerPlugin)
+  .enablePlugins(AshScriptPlugin)
   .settings(
-    name := "plantServer",
+    name := "plant-server",
     libraryDependencies ++=
       commonDeps ++
         circeDeps ++
@@ -17,7 +20,10 @@ lazy val root = (project in file("."))
         testDeps ++
         testContainersDeps ++
         Seq(deps.pureConfig),
-    commonSettings
+    commonSettings,
+    dockerBaseImage := "amazoncorretto:17-alpine",
+    dockerExposedPorts ++= Seq(8080),
+    dockerUpdateLatest := true
   )
 
 lazy val commonSettings = Seq(

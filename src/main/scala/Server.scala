@@ -23,7 +23,7 @@ object Server extends IOApp {
       otel <- Resource
         .eval(Async[F].delay(GlobalOpenTelemetry.get))
         .evalMap(OtelJava.forAsync[F])
-      given Meter[F] <- otel.meterProvider.get("plantServer").toResource
+      given Meter[F] <- otel.meterProvider.get("plant-server").toResource
       discordConfig <- DiscordConfig.load[F]
       client <- EmberClientBuilder.default.build
       plantsService <- PlantsService[F](client, discordConfig)
