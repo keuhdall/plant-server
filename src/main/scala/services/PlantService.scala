@@ -14,7 +14,7 @@ import org.typelevel.otel4s.Attribute
 import org.typelevel.otel4s.metrics.Meter
 
 import config.DiscordConfig
-import plants.PlantsService
+import plants.{Message, PlantsService}
 
 enum PlantState:
   case Ok, NoWater, Notified
@@ -108,5 +108,8 @@ object PlantsService {
             }
         }
       } yield ()) *> Temporal[F].sleep(30.seconds)).foreverM
+
+      override def ping(message: String): F[Message] =
+        logger.info(s"received message $message").as(Message("pong !"))
     })
 }
