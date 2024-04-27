@@ -10,7 +10,6 @@ import org.http4s.circe.CirceEntityEncoder.circeEntityEncoder
 import org.http4s.client.Client
 import org.http4s.{Method, Request}
 import org.typelevel.log4cats.LoggerFactory
-import org.typelevel.otel4s.Attribute
 import org.typelevel.otel4s.metrics.Meter
 
 import config.DiscordConfig
@@ -21,8 +20,7 @@ enum PlantState:
 
 final case class PlantHealthCheck(
     lastChecked: Duration,
-    state: PlantState,
-    waterLevel: Int
+    state: PlantState
 )
 
 given Configuration = Configuration.default
@@ -35,8 +33,7 @@ given Semigroup[PlantHealthCheck] = (old: PlantHealthCheck, `new`: PlantHealthCh
       case (_, PlantState.Ok)                                  => PlantState.Ok
       case (PlantState.Notified, _) | (_, PlantState.Notified) => PlantState.Notified
       case (_, PlantState.NoWater)                             => PlantState.NoWater
-    },
-    waterLevel = `new`.waterLevel
+    }
   )
 
 trait StatefulPlantService[F[_]] extends PlantsService[F] {
@@ -50,12 +47,10 @@ object PlantsService {
   ): Resource[F, StatefulPlantService[F]] =
     Resource.eval(for {
       ref <- Ref.empty[F, Map[Int, PlantHealthCheck]]
-      waterLevelHist <- Meter[F].histogram("waterLevel").withUnit("%").create
       logger = LoggerFactory[F].getLogger
     } yield new StatefulPlantService[F] {
       import PlantState.*
 
-      private val waterLevelThreshold = 10
       private val noHealthMaxDuration = 60.seconds
       private val webhookUri = discordConfig.getWebhookUri
 
@@ -80,16 +75,14 @@ object PlantsService {
       private def setNotified(id: Int, health: PlantHealthCheck): F[Unit] =
         ref.update(_.updated(id, health.copy(state = Notified)))
 
-      override def health(id: Int, waterLevel: Int): F[Unit] =
+      override def health(id: Int, noWater: Boolean): F[Unit] =
         for {
           now <- Temporal[F].monotonic
           newHealth = PlantHealthCheck(
             lastChecked = now,
-            state = if (waterLevel <= waterLevelThreshold) NoWater else Ok,
-            waterLevel = waterLevel
+            state = if (noWater) NoWater else Ok
           )
           currentHealth <- ref.get.map(_.getOrElse(id, newHealth))
-          _ <- waterLevelHist.record(waterLevel, Attribute[Long]("id", id))
           _ <- ref.update(_.updated(id, currentHealth |+| newHealth))
         } yield ()
 

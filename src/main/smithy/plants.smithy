@@ -22,13 +22,10 @@ operation Ping {
 }
 
 structure Plant {
-  @required
-  id: Integer
-  @required
-  waterLevel: Integer
+  @required id: Integer
+  @required noWater: Boolean
 }
 
 structure Message {
-  @required
-  message: String
+  @required message: String
 }
